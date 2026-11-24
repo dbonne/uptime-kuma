@@ -489,7 +489,11 @@
                     👀 {{ $t("statusPageNothing") }}
                 </div>
 
+                <p v-if="dailyUptimeStatus === 'error'" role="status">{{ $t("dailyUptimeError") }}</p>
+
                 <PublicGroupList
+                    :daily-uptime-list="dailyUptimeList"
+                    :daily-uptime-status="dailyUptimeStatus"
                     :edit-mode="enableEditMode"
                     :show-tags="config.showTags"
                     :show-certificate-expiry="config.showCertificateExpiry"
@@ -703,6 +707,9 @@ export default {
             imgDataUrl: "/icon.svg",
             loadedTheme: false,
             loadedData: false,
+            dailyUptimeList: {},
+            dailyUptimeStatus: "loading",
+            dailyUptimeLoading: false,
             baseURL: "",
             clickedEditButton: false,
             maintenanceList: [],
@@ -1014,6 +1021,7 @@ export default {
                 feedInterval = setInterval(
                     () => {
                         this.updateHeartbeatList();
+                        this.updateDailyUptimeList();
                     },
                     Math.max(5, this.config.autoRefreshInterval) * 1000
                 );
@@ -1028,6 +1036,7 @@ export default {
             });
 
         this.updateHeartbeatList();
+        this.updateDailyUptimeList();
         this.loadIncidentHistory();
 
         // Go to edit page if ?edit present
@@ -1096,6 +1105,26 @@ export default {
                     this.lastUpdateTime = dayjs();
                     this.updateUpdateTimer();
                 });
+            }
+        },
+
+        /**
+         * Fetch daily history independently of live heartbeats.
+         * @returns {Promise<void>}
+         */
+        async updateDailyUptimeList() {
+            if (this.dailyUptimeLoading) {
+                return;
+            }
+            this.dailyUptimeLoading = true;
+            try {
+                const response = await axios.get("/api/status-page/" + encodeURIComponent(this.slug) + "/uptime/daily");
+                this.dailyUptimeList = response.data.dailyUptimeList;
+                this.dailyUptimeStatus = "ready";
+            } catch (error) {
+                this.dailyUptimeStatus = "error";
+            } finally {
+                this.dailyUptimeLoading = false;
             }
         },
 

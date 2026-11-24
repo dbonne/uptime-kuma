@@ -7,11 +7,29 @@ const { R } = require("redbean-node");
 const { badgeConstants } = require("../../src/util");
 const { makeBadge } = require("badge-maker");
 const { UptimeCalculator } = require("../uptime-calculator");
+const { makeDailyUptime } = require("../util/daily-uptime");
 
 let router = express.Router();
 
 let cache = apicache.middleware;
 const server = UptimeKumaServer.getInstance();
+
+/**
+ * Find the monitors in public groups belonging to a status page.
+ * @param {number} statusPageID Status page ID
+ * @returns {Promise<number[]>} Monitor IDs (possibly repeated across groups)
+ */
+function getPublicMonitorIDs(statusPageID) {
+    return R.getCol(
+        `
+            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+            WHERE monitor_group.group_id = \`group\`.id
+            AND public = 1
+            AND \`group\`.status_page_id = ?
+        `,
+        [statusPageID]
+    );
+}
 
 router.get("/status/:slug", cache("5 minutes"), async (request, response) => {
     let slug = request.params.slug;
@@ -72,15 +90,7 @@ router.get("/api/status-page/heartbeat/:slug", cache("1 minutes"), async (reques
         slug = slug.toLowerCase();
         let statusPageID = await StatusPage.slugToID(slug);
 
-        let monitorIDList = await R.getCol(
-            `
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND public = 1
-            AND \`group\`.status_page_id = ?
-        `,
-            [statusPageID]
-        );
+        let monitorIDList = await getPublicMonitorIDs(statusPageID);
 
         for (let monitorID of monitorIDList) {
             let list = await R.getAll(
@@ -105,6 +115,32 @@ router.get("/api/status-page/heartbeat/:slug", cache("1 minutes"), async (reques
             heartbeatList,
             uptimeList,
         });
+    } catch (error) {
+        sendHttpError(response, error.message);
+    }
+});
+
+// Daily sample-based history for the monitors visible on this status page.
+router.get("/api/status-page/:slug/uptime/daily", cache("1 minutes"), async (request, response) => {
+    allowDevAllOrigin(response);
+
+    try {
+        const statusPageID = await StatusPage.slugToID(request.params.slug.toLowerCase());
+        if (!statusPageID) {
+            sendHttpError(response, "Status Page Not Found");
+            return;
+        }
+
+        const monitorIDs = await getPublicMonitorIDs(statusPageID);
+        const dailyUptimeList = {};
+        const now = Date.now();
+        for (const monitorID of new Set(monitorIDs)) {
+            const calculator = await UptimeCalculator.getUptimeCalculator(monitorID);
+            await calculator.ensureHistoryLoaded();
+            // One extra bucket protects the snapshot if the UTC day rolls over during loading.
+            dailyUptimeList[monitorID] = makeDailyUptime(calculator.getDataArray(91, "day"), now);
+        }
+        response.json({ dailyUptimeList });
     } catch (error) {
         sendHttpError(response, error.message);
     }

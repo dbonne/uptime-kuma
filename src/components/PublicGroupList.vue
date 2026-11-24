@@ -48,7 +48,7 @@
                             <template #item="monitor">
                                 <div class="item" data-testid="monitor">
                                     <div class="row">
-                                        <div class="col-9 col-xl-6 small-padding">
+                                        <div class="col-12 col-xl-6 small-padding">
                                             <div class="info">
                                                 <font-awesome-icon
                                                     v-if="editMode"
@@ -115,8 +115,12 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div :key="$root.userHeartbeatBar" class="col-3 col-xl-6">
-                                            <HeartbeatBar size="mid" :monitor-id="monitor.element.id" />
+                                        <div class="col-12 col-xl-6">
+                                            <DailyUptimeBar
+                                                :days="dailyUptimeList[monitor.element.id] || []"
+                                                :status="dailyUptimeStatus"
+                                                :monitor-name="monitor.element.name"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -133,7 +137,7 @@
 <script>
 import MonitorSettingDialog from "./MonitorSettingDialog.vue";
 import Draggable from "vuedraggable";
-import HeartbeatBar from "./HeartbeatBar.vue";
+import DailyUptimeBar from "./DailyUptimeBar.vue";
 import Uptime from "./Uptime.vue";
 import Tag from "./Tag.vue";
 import Status from "./Status.vue";
@@ -142,12 +146,22 @@ export default {
     components: {
         MonitorSettingDialog,
         Draggable,
-        HeartbeatBar,
+        DailyUptimeBar,
         Uptime,
         Tag,
         Status,
     },
     props: {
+        /** Daily histories keyed by public monitor ID */
+        dailyUptimeList: {
+            type: Object,
+            default: () => ({}),
+        },
+        /** History loading state */
+        dailyUptimeStatus: {
+            type: String,
+            default: "loading",
+        },
         /** Are we in edit mode? */
         editMode: {
             type: Boolean,
@@ -345,7 +359,13 @@ export default {
     min-height: 46px;
 }
 
+.monitor-list .item .info {
+    white-space: normal;
+    overflow: visible;
+}
+
 .item-name {
+    overflow-wrap: anywhere;
     padding-left: 5px;
     padding-right: 5px;
     margin: 0;
